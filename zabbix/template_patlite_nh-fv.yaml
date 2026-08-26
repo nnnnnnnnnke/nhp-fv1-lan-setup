@@ -1,0 +1,144 @@
+zabbix_export:
+  version: '6.0'
+  groups:
+    - uuid: 056d27ffe90e4a63a14f2e4b12f3013d
+      name: Templates/Network devices
+  templates:
+    - uuid: 9705731863f8454495bd3b92c4544c8d
+      template: 'PATLITE NH-FV by SNMP'
+      name: 'PATLITE NH-FV by SNMP'
+      description: |
+        PATLITE NH-FVシリーズ (NHP-FV1等) ネットワーク監視表示灯の監視テンプレート。
+        表示灯5色+ブザーの現在状態と死活をSNMPv2cで取得する。
+        ホスト側でSNMPインターフェース(コミュニティ: 工場出荷時 public)を設定すること。
+        OIDはNHP-FV1実機(工場出荷時設定)で取得確認済み。
+      groups:
+        - name: Templates/Network devices
+      items:
+        - uuid: 5c01cfd63d6c4cb88fcfcbd9a548f214
+          name: 'ICMP ping'
+          type: SIMPLE
+          key: icmpping
+          delay: 30s
+          history: 7d
+          valuemap:
+            name: 'Service state'
+        - uuid: 157119212ca74028bf56792a20803aff
+          name: 'System uptime'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.3.0
+          key: 'system.uptime[sysUpTime.0]'
+          delay: 1m
+          history: 7d
+          units: uptime
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '0.01'
+        - uuid: 3a71db97761849f89ca1add6267fb205
+          name: 'System name'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.5.0
+          key: 'system.name[sysName.0]'
+          delay: 1h
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+        - uuid: f74b7a1bb67a4a2595a1013b3dca559d
+          name: '表示灯 赤の状態'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.20440.4.1.5.1.2.1.4.1
+          key: 'patlite.led.state[red]'
+          delay: 30s
+          history: 7d
+          valuemap:
+            name: 'PATLITE LED state'
+        - uuid: ca77b9d68b63451da477af7ca787f1d3
+          name: '表示灯 黄の状態'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.20440.4.1.5.1.2.1.4.2
+          key: 'patlite.led.state[yellow]'
+          delay: 30s
+          history: 7d
+          valuemap:
+            name: 'PATLITE LED state'
+        - uuid: c82e3869c1ee464d8d03351f473789ec
+          name: '表示灯 緑の状態'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.20440.4.1.5.1.2.1.4.3
+          key: 'patlite.led.state[green]'
+          delay: 30s
+          history: 7d
+          valuemap:
+            name: 'PATLITE LED state'
+        - uuid: a331556fee2b430bbd98455a655748de
+          name: '表示灯 青の状態'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.20440.4.1.5.1.2.1.4.4
+          key: 'patlite.led.state[blue]'
+          delay: 30s
+          history: 7d
+          valuemap:
+            name: 'PATLITE LED state'
+        - uuid: e68544ab22cf4048991b9bb770c0d52e
+          name: '表示灯 白の状態'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.20440.4.1.5.1.2.1.4.5
+          key: 'patlite.led.state[white]'
+          delay: 30s
+          history: 7d
+          valuemap:
+            name: 'PATLITE LED state'
+        - uuid: ddca3535a4ee4256a87fc74981bf580a
+          name: 'ブザーの状態'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.20440.4.1.5.1.2.1.4.6
+          key: 'patlite.buzzer.state'
+          delay: 30s
+          history: 7d
+          valuemap:
+            name: 'PATLITE buzzer state'
+      valuemaps:
+        - uuid: 82cada33b3a14678a40c4d8be090ca2d
+          name: 'PATLITE LED state'
+          mappings:
+            - value: '1'
+              newvalue: 消灯
+            - value: '2'
+              newvalue: 点灯
+            - value: '3'
+              newvalue: 点滅パターン1
+            - value: '4'
+              newvalue: 変化なし
+            - value: '5'
+              newvalue: 点滅パターン2
+        - uuid: da256da5d0174388ac7d5ef9b6a5dc03
+          name: 'PATLITE buzzer state'
+          mappings:
+            - value: '1'
+              newvalue: 停止
+            - value: '2'
+              newvalue: ブザーパターン1
+            - value: '3'
+              newvalue: ブザーパターン2
+            - value: '5'
+              newvalue: ブザーパターン3
+            - value: '6'
+              newvalue: ブザーパターン4
+        - uuid: 2a72c2b48dc04d69968ad9e42127a1fe
+          name: 'Service state'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+  triggers:
+    - uuid: dcbca679fc074d538cd544a5204f2abf
+      expression: 'max(/PATLITE NH-FV by SNMP/icmpping,#3)=0'
+      name: 'PATLITE: 応答なし (ICMP ping)'
+      priority: HIGH
+    - uuid: 016c2c3401ab4c4494ef242d5acba48a
+      expression: 'last(/PATLITE NH-FV by SNMP/patlite.led.state[red])=2 or last(/PATLITE NH-FV by SNMP/patlite.led.state[red])=3 or last(/PATLITE NH-FV by SNMP/patlite.led.state[red])=5'
+      name: 'PATLITE: 表示灯 赤が点灯/点滅中'
+      priority: INFO
+      description: '表示灯本体側で赤が上がっている(何らかの異常通知を受けている)ことをZabbix側でも把握するためのトリガー'
