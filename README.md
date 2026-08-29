@@ -265,36 +265,48 @@ SNMPv2-SMI::enterprises.20440.4.1.5.1.2.1.4.1 = INTEGER: 2   ← 2=点灯
 
 ## Claude Code ステータスランプ
 
-[claude-code/claude-lamp.sh](claude-code/claude-lamp.sh) は Claude Code の[フック](https://code.claude.com/docs/ja/hooks)から呼び出して、Claude の状態をパトライトに表示するスクリプト。PNS コマンドを `nc` で直接送るので Python 不要・起動が速い(フックの遅延がほぼゼロ)。
+[claude-code/claude-lamp.sh](claude-code/claude-lamp.sh) は Claude Code の[フック](https://code.claude.com/docs/ja/hooks)から呼び出して、Claude の状態をパトライトに表示するスクリプト。PNS コマンドを `nc` で直接送るので Python 不要・起動が速い(フックの遅延がほぼゼロ)。5 色をフルに使って「今なにをしているか」まで分かる。
 
-| Claude の状態 | 表示 | 呼び出し |
+| Claude の状態 | 表示 | state |
 |---|---|---|
-| 作業中 | 緑点滅 | `claude-lamp.sh working` |
-| 許可待ち(要対応) | 赤点滅 🚨 | `claude-lamp.sh notify`(メッセージで自動判定) |
-| 入力待ち(アイドル) | 黄点滅 | 同上 |
-| 応答完了 | 緑点灯 | `claude-lamp.sh done` |
-| セッション終了 | 消灯 | `claude-lamp.sh off` |
+| 思考・読み取り中 | 緑点滅 | `working` |
+| ファイル編集中 (Edit/Write) | 青点滅 | `tool`(stdin のツール名で自動判定) |
+| Web・サブエージェント | 白点滅 | 同上 |
+| コンテキスト圧縮中 | 黄点灯 | `compact` |
+| 入力待ち(アイドル) | 黄点滅 | `notify`(メッセージで自動判定) |
+| 許可待ち(要対応) | 赤点滅 🚨 | 同上 |
+| ツール失敗 | 赤点灯(次のイベントまで) | `fail` |
+| 応答完了 | 白→青→緑ワイプして緑点灯 | `done` |
+| セッション開始 | 5色スイープして緑点灯 | `hello`(compact 由来は無視) |
+| セッション終了 | 消灯 | `off` |
 
-`~/.claude/settings.json` のフック設定例(イベント → 状態の対応):
+`./claude-lamp.sh demo` で全状態を順に実演できる。
+
+`~/.claude/settings.json` のフック設定例(イベント → state の対応):
 
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
-    "PreToolUse":       [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
-    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
-    "Notification":     [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh notify",  "timeout": 5 }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh done",    "timeout": 5 }] }],
-    "SessionEnd":       [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh off",     "timeout": 5 }] }]
+    "UserPromptSubmit":   [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
+    "PreToolUse":         [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh tool",    "timeout": 5 }] }],
+    "PostToolUse":        [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh fail",    "timeout": 5 }] }],
+    "Notification":       [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh notify",  "timeout": 5 }] }],
+    "SessionStart":       [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh hello",   "timeout": 5 }] }],
+    "PreCompact":         [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh compact", "timeout": 5 }] }],
+    "PostCompact":        [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
+    "Stop":               [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh done",    "timeout": 5 }] }],
+    "SessionEnd":         [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh off",     "timeout": 5 }] }]
   }
 }
 ```
 
 実装メモ:
 
-- 同じ状態の連続送信は `/tmp/claude-lamp.<user>.state` でスキップ(PreToolUse/PostToolUse は高頻度で呼ばれるため)
+- 同じ状態の連続送信は `/tmp/claude-lamp.<user>.state` でスキップ(PreToolUse/PostToolUse は高頻度で呼ばれるため)。遷移履歴は `/tmp/claude-lamp.<user>.log` に残る
+- スイープ演出はバックグラウンドで送るのでフックをブロックしない。演出中に新しい状態が来たら途中で中断して譲る
 - ランプに届かないとき(ケーブル未接続・外出先など)は 1 秒でタイムアウトして黙って終了。Claude Code の動作は妨げない
-- `CLAUDE_LAMP_BUZZER=1` を設定すると許可待ち時にブザーパターン2も鳴る(デフォルトは消音)
+- `CLAUDE_LAMP_BUZZER=1` で許可待ち時にブザーパターン2、`CLAUDE_LAMP_DONE_CHANNEL=n` で完了時に MP3 チャンネル n を再生(どちらもデフォルトは消音)
 - 複数セッション同時実行時は後勝ち(最後にイベントを出したセッションの状態が表示される)
 
 ## トラブルシューティング
