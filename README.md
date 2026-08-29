@@ -263,6 +263,40 @@ SNMPv2-SMI::enterprises.20440.4.1.5.1.2.1.4.1 = INTEGER: 2   ← 2=点灯
 - **HTTP コマンド制御(`/api/control?alert=...`)**: NH-FV2 の取説には載っているが、**FV1 実機では 404** だった(FV2 以降の機能)。Zabbix の Webhook メディアタイプで直接叩けるのは FV2 以降のみ。
 - **rsh**: Linux の Zabbix サーバからなら `rsh-client` で叩けるが、特権ポート必須・認証なしの古いプロトコルなので、SNMP SET で足りる以上あえて使う理由はない。
 
+## Claude Code ステータスランプ
+
+[claude-code/claude-lamp.sh](claude-code/claude-lamp.sh) は Claude Code の[フック](https://code.claude.com/docs/ja/hooks)から呼び出して、Claude の状態をパトライトに表示するスクリプト。PNS コマンドを `nc` で直接送るので Python 不要・起動が速い(フックの遅延がほぼゼロ)。
+
+| Claude の状態 | 表示 | 呼び出し |
+|---|---|---|
+| 作業中 | 緑点滅 | `claude-lamp.sh working` |
+| 許可待ち(要対応) | 赤点滅 🚨 | `claude-lamp.sh notify`(メッセージで自動判定) |
+| 入力待ち(アイドル) | 黄点滅 | 同上 |
+| 応答完了 | 緑点灯 | `claude-lamp.sh done` |
+| セッション終了 | 消灯 | `claude-lamp.sh off` |
+
+`~/.claude/settings.json` のフック設定例(イベント → 状態の対応):
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
+    "PreToolUse":       [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh working", "timeout": 5 }] }],
+    "Notification":     [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh notify",  "timeout": 5 }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh done",    "timeout": 5 }] }],
+    "SessionEnd":       [{ "hooks": [{ "type": "command", "command": "/path/to/claude-lamp.sh off",     "timeout": 5 }] }]
+  }
+}
+```
+
+実装メモ:
+
+- 同じ状態の連続送信は `/tmp/claude-lamp.<user>.state` でスキップ(PreToolUse/PostToolUse は高頻度で呼ばれるため)
+- ランプに届かないとき(ケーブル未接続・外出先など)は 1 秒でタイムアウトして黙って終了。Claude Code の動作は妨げない
+- `CLAUDE_LAMP_BUZZER=1` を設定すると許可待ち時にブザーパターン2も鳴る(デフォルトは消音)
+- 複数セッション同時実行時は後勝ち(最後にイベントを出したセッションの状態が表示される)
+
 ## トラブルシューティング
 
 - **アダプタの IP が 169.254.x.x になっている** → Mac 側の手動 IP 設定がされていない。「Mac 側の設定」を参照。
